@@ -40,7 +40,7 @@ export interface Options {
   /**
    * hotkey to trigger the overlay
    *
-   * default: ["Meta", "C"]
+   * default: ["Meta", "C"] on macOS, ["Control", "C"] on Windows/Linux
    */
   hotkey?: Hotkey | Hotkey[];
 
@@ -68,6 +68,15 @@ export const libStore = createStore<LibStore>(() => ({
   pressedKeys: new Set(),
 }));
 
+const getDefaultHotkey = (): Hotkey[] => {
+  if (typeof navigator === "undefined") {
+    return ["Meta", "C"];
+  }
+
+  const isMac = navigator.platform.toLowerCase().includes("mac");
+  return isMac ? ["Meta", "C"] : ["Control", "C"];
+};
+
 export const init = (options: Options = {}) => {
   if (options.enabled === false) {
     return;
@@ -76,7 +85,7 @@ export const init = (options: Options = {}) => {
   const resolvedOptions = {
     adapter: undefined,
     enabled: true,
-    hotkey: ["Meta", "C"] as Hotkey | Hotkey[],
+    hotkey: options.hotkey ?? getDefaultHotkey(),
     keyHoldDuration: 500,
     ...options,
   };
@@ -259,6 +268,18 @@ export const init = (options: Options = {}) => {
     }));
   };
 
+  const handleClick = (event: MouseEvent) => {
+    const { overlayMode } = libStore.getState();
+
+    if (overlayMode === "hidden") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  };
+
   const handleVisibilityChange = () => {
     if (document.hidden) {
       cleanupGrabbedIndicators();
@@ -287,7 +308,8 @@ export const init = (options: Options = {}) => {
   };
 
   window.addEventListener("mousemove", handleMouseMove);
-  window.addEventListener("mousedown", handleMouseDown);
+  window.addEventListener("mousedown", handleMouseDown, true);
+  window.addEventListener("click", handleClick, true);
   window.addEventListener("scroll", handleScroll, true);
   window.addEventListener("resize", handleResize);
   document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -446,6 +468,18 @@ export const init = (options: Options = {}) => {
     }
 
     showLabel(root, rect.left, rect.top, tagName);
+
+    const isDisabled =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access -- we do any because typing this will be a massive fucking headache
+      Boolean((element as any).disabled) ||
+      computedStyle.pointerEvents === "none";
+
+    if (isDisabled) {
+      const overlayElement = selectionOverlay.element;
+      if (overlayElement) {
+        overlayElement.style.pointerEvents = "auto";
+      }
+    }
   };
 
   let renderScheduled = false;
@@ -472,7 +506,8 @@ export const init = (options: Options = {}) => {
 
   return () => {
     window.removeEventListener("mousemove", handleMouseMove);
-    window.removeEventListener("mousedown", handleMouseDown);
+    window.removeEventListener("mousedown", handleMouseDown, true);
+    window.removeEventListener("click", handleClick, true);
     window.removeEventListener("scroll", handleScroll, true);
     window.removeEventListener("resize", handleResize);
     document.removeEventListener("visibilitychange", handleVisibilityChange);
